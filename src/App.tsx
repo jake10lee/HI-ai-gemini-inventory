@@ -100,6 +100,17 @@ export default function App() {
   // Auth Effect
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
+      // Security: Check if user email is allowed
+      const allowedEmails = ['yahgong@gmail.com']; // Add authorized emails here
+      if (u && u.email && !allowedEmails.includes(u.email)) {
+        auth.signOut();
+        setModal({ 
+          open: true, 
+          title: "Access Denied", 
+          content: "승인되지 않은 계정입니다. 관리자에게 문의하세요." 
+        });
+        return;
+      }
       setUser(u);
       setIsAuthReady(true);
     });
@@ -494,6 +505,7 @@ export default function App() {
                   <th className="px-6 py-4 text-right">단가</th>
                   <th className="px-6 py-4 text-center">수량</th>
                   <th className="px-6 py-4 text-right">금액</th>
+                  <th className="px-6 py-4 text-center">CTX</th>
                   <th className="px-6 py-4 text-center">도구</th>
                 </tr>
               </thead>
@@ -517,6 +529,18 @@ export default function App() {
                     <td className="px-6 py-4 text-center font-bold text-slate-600">{item.quantity}</td>
                     <td className="px-6 py-4 text-right font-black text-slate-900">
                       ₩{((Number(item.price) || 0) * (Number(item.quantity) || 0)).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {item.company?.includes('크레텍') ? (
+                        <a 
+                          href={`https://ctx.cretec.kr/CtxApp/ctx/selectPowerSearchList.do?prod_cd=${item.code}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg inline-block transition-transform hover:scale-110"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      ) : '-'}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
