@@ -9,7 +9,8 @@ import {
   doc, 
   serverTimestamp,
   orderBy,
-  getDocFromServer
+  getDocFromServer,
+  writeBatch
 } from 'firebase/firestore';
 import { 
   signInWithPopup,
@@ -99,6 +100,7 @@ export default function App() {
 
   const [showKeySetting, setShowKeySetting] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -338,11 +340,56 @@ export default function App() {
       const docRef = doc(db, 'inventory', deleteConfirm.id);
       await deleteDoc(docRef);
       setDeleteConfirm({ open: false, id: null, name: '' });
+      setSelectedIds(prev => prev.filter(id => id !== deleteConfirm.id));
     } catch (e) {
       handleFirestoreError(e, OperationType.DELETE, `inventory/${deleteConfirm.id}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0 || !user) return;
+    
+    setDeleteConfirm({ 
+      open: true, 
+      id: 'BULK_DELETE', 
+      name: `${selectedIds.length}개의 선택된 항목` 
+    });
+  };
+
+  const executeBulkDelete = async () => {
+    if (selectedIds.length === 0 || !user) return;
+    
+    setLoading(true);
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach(id => {
+        const docRef = doc(db, 'inventory', id);
+        batch.delete(docRef);
+      });
+      await batch.commit();
+      setSelectedIds([]);
+      setDeleteConfirm({ open: false, id: null, name: '' });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, 'inventory/bulk');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filtered.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map(item => item.id!).filter(Boolean));
+    }
+  };
+
+  const toggleSelectItem = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
   const generateProductGuide = async (item: InventoryItem) => {
@@ -529,17 +576,27 @@ export default function App() {
             ))}
           </div>
           
-          <div className="relative flex-1">
-            <input 
-              type="text" 
-              placeholder="품명, 날짜, 거래처 검색..." 
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm"
-              value={searchQuery} 
-              onChange={(e) => setSearchQuery(e.target.value)} 
-            />
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-              <Search size={18} />
+          <div className="relative flex-1 flex gap-2">
+            <div className="relative flex-1">
+              <input 
+                type="text" 
+                placeholder="품명, 날짜, 거래처 검색..." 
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all shadow-sm"
+                value={searchQuery} 
+                onChange={(e) => setSearchQuery(e.target.value)} 
+              />
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                <Search size={18} />
+              </div>
             </div>
+            {selectedIds.length > 0 && (
+              <button 
+                onClick={handleBulkDelete}
+                className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-black flex items-center gap-2 hover:bg-red-100 transition-colors shrink-0"
+              >
+                <Trash2 size={16} /> {selectedIds.length}개 삭제
+              </button>
+            )}
           </div>
         </div>
 
@@ -549,7 +606,15 @@ export default function App() {
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50/50 border-b border-slate-100">
                 <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <th className="px-6 py-4 text-center w-20">구분</th>
+                  <th className="px-6 py-4 text-center w-12">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
+                  <th className="px-6 py-4 text-center w-24">구분</th>
                   <th className="px-6 py-4">날짜</th>
                   <th className="px-6 py-4">거래처</th>
                   <th className="px-6 py-4">브랜드</th>
@@ -564,8 +629,19 @@ export default function App() {
               </thead>
               <tbody className="divide-y divide-slate-50 text-sm font-medium">
                 {filtered.map(item => (
-                  <tr key={item.id} className="hover:bg-slate-50/50 group transition-colors">
+                  <tr key={item.id} className={cn(
+                    "hover:bg-slate-50/50 group transition-colors",
+                    selectedIds.includes(item.id!) && "bg-blue-50/30"
+                  )}>
                     <td className="px-6 py-4 text-center">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        checked={selectedIds.includes(item.id!)}
+                        onChange={() => toggleSelectItem(item.id!)}
+                      />
+                    </td>
+                    <td className="px-6 py-4 text-center whitespace-nowrap min-w-[80px]">
                       <span className={cn(
                         "px-2 py-0.5 rounded text-[10px] font-black",
                         item.type === 'purchase' ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"
@@ -629,9 +705,18 @@ export default function App() {
           {/* Mobile List View */}
           <div className="lg:hidden flex flex-col divide-y divide-slate-100">
             {filtered.map(item => (
-              <div key={item.id} className="p-4 flex flex-col gap-3">
+              <div key={item.id} className={cn(
+                "p-4 flex flex-col gap-3 transition-colors",
+                selectedIds.includes(item.id!) && "bg-blue-50/30"
+              )}>
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 mr-1"
+                      checked={selectedIds.includes(item.id!)}
+                      onChange={() => toggleSelectItem(item.id!)}
+                    />
                     <span className={cn(
                       "px-2 py-0.5 rounded text-[10px] font-black",
                       item.type === 'purchase' ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"
@@ -889,7 +974,13 @@ export default function App() {
             </p>
             <div className="flex gap-3">
               <button 
-                onClick={handleDeleteItem} 
+                onClick={() => {
+                  if (deleteConfirm.id === 'BULK_DELETE') {
+                    executeBulkDelete();
+                  } else {
+                    handleDeleteItem();
+                  }
+                }} 
                 className="flex-1 bg-red-500 text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-transform shadow-lg shadow-red-500/20"
               >
                 삭제하기
