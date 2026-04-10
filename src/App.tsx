@@ -30,7 +30,8 @@ import {
   Trash2, 
   X,
   Check,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { GoogleGenAI } from "@google/genai";
@@ -89,6 +90,13 @@ export default function App() {
   const [editModal, setEditModal] = useState<{ open: boolean; data: InventoryItem | null }>({ open: false, data: null });
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: string | null; name: string }>({ open: false, id: null, name: '' });
   
+  const [duplicateModal, setDuplicateModal] = useState<{
+    open: boolean;
+    duplicates: InventoryItem[];
+    pending: InventoryItem[];
+    resolve: ((action: 'exclude' | 'all' | 'cancel') => void) | null;
+  }>({ open: false, duplicates: [], pending: [], resolve: null });
+
   const [showKeySetting, setShowKeySetting] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
@@ -231,21 +239,66 @@ export default function App() {
 
         if (parsed && parsed.items) {
           const invoiceDate = parsed.date || new Date().toISOString().split('T')[0];
-          const inventoryRef = collection(db, 'inventory');
+          
+          const itemsToSave: InventoryItem[] = parsed.items.map((item: any) => ({
+            type: parsed.type || 'purchase',
+            date: invoiceDate,
+            company: (parsed.company || "Unknown Company").slice(0, 200),
+            brand: (item.brand || "").slice(0, 200),
+            name: (item.name || "Unknown Item").slice(0, 500),
+            spec: (item.spec || "").slice(0, 500),
+            code: (item.code || "").slice(0, 200),
+            quantity: Math.max(0, Number(item.quantity) || 0),
+            unit: (item.unit || "").slice(0, 50),
+            price: Math.max(0, Number(item.price) || 0),
+          }));
 
-          for (const item of parsed.items) {
+          // Check for duplicates
+          const duplicates = itemsToSave.filter(newItem => 
+            inventory.some(existing => 
+              existing.date === newItem.date &&
+              existing.company === newItem.company &&
+              existing.name === newItem.name &&
+              existing.spec === newItem.spec &&
+              existing.price === newItem.price &&
+              existing.quantity === newItem.quantity
+            )
+          );
+
+          let finalItems = itemsToSave;
+
+          if (duplicates.length > 0) {
+            const action = await new Promise<'exclude' | 'all' | 'cancel'>((resolve) => {
+              setDuplicateModal({
+                open: true,
+                duplicates,
+                pending: itemsToSave,
+                resolve
+              });
+            });
+
+            setDuplicateModal(prev => ({ ...prev, open: false }));
+
+            if (action === 'cancel') continue;
+            if (action === 'exclude') {
+              finalItems = itemsToSave.filter(newItem => 
+                !inventory.some(existing => 
+                  existing.date === newItem.date &&
+                  existing.company === newItem.company &&
+                  existing.name === newItem.name &&
+                  existing.spec === newItem.spec &&
+                  existing.price === newItem.price &&
+                  existing.quantity === newItem.quantity
+                )
+              );
+            }
+          }
+
+          const inventoryRef = collection(db, 'inventory');
+          for (const item of finalItems) {
             try {
               await addDoc(inventoryRef, {
-                type: parsed.type || 'purchase',
-                date: invoiceDate,
-                company: (parsed.company || "Unknown Company").slice(0, 200),
-                brand: (item.brand || "").slice(0, 200),
-                name: (item.name || "Unknown Item").slice(0, 500),
-                spec: (item.spec || "").slice(0, 500),
-                code: (item.code || "").slice(0, 200),
-                quantity: Math.max(0, Number(item.quantity) || 0),
-                unit: (item.unit || "").slice(0, 50),
-                price: Math.max(0, Number(item.price) || 0),
+                ...item,
                 timestamp: serverTimestamp()
               });
             } catch (fsErr) {
@@ -628,7 +681,56 @@ export default function App() {
 
       {/* --- Modals --- */}
 
-      {/* Settings Modal */}
+      {/* Duplicate Check Modal */}
+      {duplicateModal.open && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-8">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center">
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800 tracking-tight">중복 데이터 감지</h3>
+                  <p className="text-sm text-slate-500 font-medium">이미 등록된 데이터와 일치하는 항목이 있습니다.</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-2xl p-4 mb-6 max-h-48 overflow-y-auto border border-slate-100">
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">중복된 항목 ({duplicateModal.duplicates.length}건)</p>
+                <div className="space-y-2">
+                  {duplicateModal.duplicates.map((item, idx) => (
+                    <div key={idx} className="text-xs font-bold text-slate-600 bg-white p-2 rounded-lg border border-slate-100">
+                      {item.company} | {item.name} ({item.spec})
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <button 
+                  onClick={() => duplicateModal.resolve?.('exclude')}
+                  className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Check size={18} /> 중복 제외하고 저장
+                </button>
+                <button 
+                  onClick={() => duplicateModal.resolve?.('all')}
+                  className="w-full bg-white border-2 border-slate-200 text-slate-700 py-4 rounded-2xl font-black text-sm transition-transform active:scale-95"
+                >
+                  모두 저장 (중복 허용)
+                </button>
+                <button 
+                  onClick={() => duplicateModal.resolve?.('cancel')}
+                  className="w-full bg-red-50 text-red-600 py-4 rounded-2xl font-black text-sm transition-transform active:scale-95"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showKeySetting && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[500] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 animate-in zoom-in-95">
@@ -863,7 +965,7 @@ export default function App() {
 
       {/* Loading Spinner */}
       {loading && (
-        <div className="fixed inset-0 bg-white/60 backdrop-blur-[2px] z-[1100] flex items-center justify-center">
+        <div className="fixed inset-0 bg-white/60 backdrop-blur-[2px] z-[1200] flex items-center justify-center">
           <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl flex items-center gap-3 shadow-2xl animate-pulse">
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             <span className="text-xs font-black uppercase tracking-widest">실행 중...</span>
