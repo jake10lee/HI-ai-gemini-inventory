@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: inventory
+    // Document ID: auto-generated
+    // Fields:
+    //   - type: string ('purchase' | 'sales') - required
+    //   - date: string (YYYY-MM-DD) - required
+    //   - company: string - required
+    //   - brand: string - optional
+    //   - name: string - required
+    //   - spec: string - optional
+    //   - code: string - optional
+    //   - quantity: number - required, positive
+    //   - unit: string - optional
+    //   - price: number - required, positive
+    //   - timestamp: timestamp - required on create
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidInventoryItem(data) {
+      return data.keys().hasAll(['type', 'date', 'company', 'name', 'quantity', 'price', 'timestamp']) &&
+             data.type in ['purchase', 'sales'] &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.company is string && data.company.size() <= 200 &&
+             data.name is string && data.name.size() <= 500 &&
+             data.quantity is number && data.quantity >= 0 &&
+             data.price is number && data.price >= 0 &&
+             data.timestamp is timestamp &&
+             (!('brand' in data) || (data.brand is string && data.brand.size() <= 200)) &&
+             (!('spec' in data) || (data.spec is string && data.spec.size() <= 500)) &&
+             (!('code' in data) || (data.code is string && data.code.size() <= 200)) &&
+             (!('unit' in data) || (data.unit is string && data.unit.size() <= 50));
+    }
+
+    match /inventory/{itemId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidInventoryItem(request.resource.data) && request.resource.data.timestamp == request.time;
+      allow update: if isAuthenticated() && isValidInventoryItem(request.resource.data) && request.resource.data.timestamp == resource.data.timestamp;
+      allow delete: if isAuthenticated();
+    }
+  }
+}

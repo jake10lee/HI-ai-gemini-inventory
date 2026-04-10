@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "A single item in the inventory extracted from an invoice.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["purchase", "sales"],
+          "description": "Whether the item was purchased or sold."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date of the invoice."
+        },
+        "company": {
+          "type": "string",
+          "description": "The counterparty company name."
+        },
+        "brand": {
+          "type": "string",
+          "description": "The brand of the product."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the product."
+        },
+        "spec": {
+          "type": "string",
+          "description": "The specification of the product."
+        },
+        "code": {
+          "type": "string",
+          "description": "The product code."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The quantity of the item."
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement."
+        },
+        "price": {
+          "type": "number",
+          "description": "The unit price of the item."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Server timestamp of when the record was created."
+        }
+      },
+      "required": ["type", "date", "company", "name", "quantity", "price"]
+    }
+  },
+  "firestore": {
+    "inventory": {
+      "schema": "InventoryItem",
+      "description": "Collection of inventory items."
+    }
+  }
+}
