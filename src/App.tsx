@@ -32,7 +32,8 @@ import {
   X,
   Check,
   AlertCircle,
-  AlertTriangle
+  AlertTriangle,
+  Menu
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { GoogleGenAI } from "@google/genai";
@@ -101,6 +102,23 @@ export default function App() {
   const [showKeySetting, setShowKeySetting] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<'gemini-3-flash-preview' | 'gemini-3.1-flash-lite-preview'>('gemini-3-flash-preview');
+  const [manualAddModal, setManualAddModal] = useState<{ open: boolean; data: Partial<InventoryItem> }>({ 
+    open: false, 
+    data: {
+      type: 'purchase',
+      date: new Date().toISOString().split('T')[0],
+      company: '',
+      brand: '',
+      name: '',
+      spec: '',
+      code: '',
+      quantity: 1,
+      price: 0,
+      unit: 'EA'
+    } 
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -206,7 +224,7 @@ export default function App() {
         });
 
         const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: selectedModel,
           contents: [
             {
               parts: [
@@ -358,6 +376,23 @@ export default function App() {
     });
   };
 
+  const handleManualAdd = async () => {
+    if (!manualAddModal.data.name || !user) return;
+    setLoading(true);
+    try {
+      const inventoryRef = collection(db, 'inventory');
+      await addDoc(inventoryRef, {
+        ...manualAddModal.data,
+        timestamp: serverTimestamp()
+      });
+      setManualAddModal({ ...manualAddModal, open: false });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.CREATE, 'inventory');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const executeBulkDelete = async () => {
     if (selectedIds.length === 0 || !user) return;
     
@@ -486,24 +521,73 @@ export default function App() {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 text-slate-900 font-sans">
-      {/* Sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 bg-slate-900 text-white p-6 sticky top-0 h-screen shrink-0">
-        <div className="flex items-center gap-3 mb-10">
-          <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
-            <PackageSearch size={24} />
+      {/* Mobile Top Bar */}
+      <div className="lg:hidden bg-slate-900 text-white p-4 flex items-center justify-between sticky top-0 z-[100] shadow-xl">
+        <div className="flex items-center gap-2">
+          <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg shadow-blue-500/20">
+            <PackageSearch size={20} />
           </div>
-          <h1 className="text-xl font-black tracking-tighter uppercase">HI AI System</h1>
+          <h1 className="text-sm font-black tracking-tighter uppercase">HI AI System</h1>
+        </div>
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={() => setShowKeySetting(true)} 
+            className="p-2 text-slate-400 hover:text-white transition-colors"
+          >
+            <Settings size={20} />
+          </button>
+          <button 
+            onClick={() => setIsMobileMenuOpen(true)} 
+            className="p-2 text-white hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <Menu size={24} />
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={cn(
+        "fixed inset-y-0 left-0 z-[1100] w-64 bg-slate-900 text-white p-6 flex flex-col transition-transform duration-300 ease-in-out lg:sticky lg:translate-x-0 lg:z-auto lg:h-screen shrink-0",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
+              <PackageSearch size={24} />
+            </div>
+            <h1 className="text-xl font-black tracking-tighter uppercase">HI AI System</h1>
+          </div>
+          <button 
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="lg:hidden p-2 text-slate-400 hover:text-white"
+          >
+            <X size={20} />
+          </button>
         </div>
         
         <nav className="space-y-2 flex-1">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold bg-blue-600 text-white shadow-lg">
+          <button 
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-bold bg-blue-600 text-white shadow-lg"
+          >
             <Database size={18} /> 통합 원장
           </button>
         </nav>
 
         <div className="mt-auto pt-6 border-t border-slate-800">
           <button 
-            onClick={() => setShowKeySetting(true)} 
+            onClick={() => {
+              setShowKeySetting(true);
+              setIsMobileMenuOpen(false);
+            }} 
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-white text-sm font-bold transition-all"
           >
             <Settings size={18} /> 시스템 설정
@@ -525,6 +609,12 @@ export default function App() {
               className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 shadow-sm transition-all"
             >
               <Download size={16} /> 엑셀 저장
+            </button>
+            <button 
+              onClick={() => setManualAddModal({ ...manualAddModal, open: true })} 
+              className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-50 shadow-sm transition-all"
+            >
+              <Pencil size={16} /> 수동 추가
             </button>
             <button 
               onClick={() => fileInputRef.current?.click()} 
@@ -824,8 +914,18 @@ export default function App() {
             </h3>
             <div className="space-y-4">
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <h4 className="text-sm font-black text-slate-800">AI 모델</h4>
-                <p className="text-xs text-slate-500 mt-1 font-medium">Gemini 3 Flash Preview (System Managed)</p>
+                <h4 className="text-sm font-black text-slate-800 mb-2">AI 모델 선택</h4>
+                <select 
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value as any)}
+                >
+                  <option value="gemini-3-flash-preview">Gemini 3 Flash (Standard)</option>
+                  <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite (Fast)</option>
+                </select>
+                <p className="text-[10px] text-slate-500 mt-2 font-medium leading-relaxed">
+                  * Flash Lite는 속도가 빠르지만 복잡한 명세서 분석 시 정확도가 다소 낮을 수 있습니다.
+                </p>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <h4 className="text-sm font-black text-slate-800">인증 상태</h4>
@@ -844,6 +944,127 @@ export default function App() {
                 className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm shadow-lg transition-transform active:scale-95"
               >
                 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Add Modal */}
+      {manualAddModal.open && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[500] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 border-b border-slate-50 flex items-center justify-between">
+              <h3 className="text-lg font-black tracking-tight text-slate-800">수동 데이터 추가</h3>
+              <button onClick={() => setManualAddModal({ ...manualAddModal, open: false })} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 mb-1">날짜</label>
+                  <input 
+                    type="date" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    value={manualAddModal.data.date} 
+                    onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, date: e.target.value } })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 mb-1">유형</label>
+                  <select 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    value={manualAddModal.data.type} 
+                    onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, type: e.target.value as InvoiceType } })}
+                  >
+                    <option value="purchase">매입</option>
+                    <option value="sales">매출</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">거래처</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  placeholder="거래처명을 입력하세요"
+                  value={manualAddModal.data.company} 
+                  onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, company: e.target.value } })} 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 mb-1">브랜드</label>
+                  <input 
+                    type="text" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    value={manualAddModal.data.brand} 
+                    onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, brand: e.target.value } })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 mb-1">제품코드</label>
+                  <input 
+                    type="text" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    value={manualAddModal.data.code} 
+                    onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, code: e.target.value } })} 
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 mb-1">품명</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  placeholder="품명을 입력하세요"
+                  value={manualAddModal.data.name} 
+                  onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, name: e.target.value } })} 
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 mb-1">규격</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  value={manualAddModal.data.spec} 
+                  onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, spec: e.target.value } })} 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 mb-1">단가</label>
+                  <input 
+                    type="number" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    value={manualAddModal.data.price} 
+                    onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, price: Number(e.target.value) } })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 mb-1">수량</label>
+                  <input 
+                    type="number" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    value={manualAddModal.data.quantity} 
+                    onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, quantity: Number(e.target.value) } })} 
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="p-6 bg-slate-50 flex gap-3">
+              <button 
+                onClick={handleManualAdd} 
+                className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-transform"
+              >
+                추가하기
+              </button>
+              <button 
+                onClick={() => setManualAddModal({ ...manualAddModal, open: false })} 
+                className="flex-1 bg-white border border-slate-200 py-4 rounded-2xl font-black text-sm text-slate-500 active:scale-95 transition-transform"
+              >
+                취소
               </button>
             </div>
           </div>
@@ -919,6 +1140,15 @@ export default function App() {
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
                   value={editModal.data.name} 
                   onChange={(e) => setEditModal({...editModal, data: {...editModal.data!, name: e.target.value}})} 
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 mb-1">규격</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  value={editModal.data.spec} 
+                  onChange={(e) => setEditModal({...editModal, data: {...editModal.data!, spec: e.target.value}})} 
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
