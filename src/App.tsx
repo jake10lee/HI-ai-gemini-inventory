@@ -500,8 +500,8 @@ export default function App() {
                   <th className="px-6 py-4">날짜</th>
                   <th className="px-6 py-4">거래처</th>
                   <th className="px-6 py-4">브랜드</th>
-                  <th className="px-6 py-4">품명</th>
-                  <th className="px-6 py-4">규격</th>
+                  <th className="px-6 py-4 min-w-[300px]">품명</th>
+                  <th className="px-6 py-4 min-w-[150px]">규격</th>
                   <th className="px-6 py-4 text-right">단가</th>
                   <th className="px-6 py-4 text-center">수량</th>
                   <th className="px-6 py-4 text-right">금액</th>
@@ -588,6 +588,16 @@ export default function App() {
                     <span className="text-[11px] font-bold text-slate-400 font-mono">{item.date}</span>
                   </div>
                   <div className="flex gap-1">
+                    {item.company?.includes('크레텍') && (
+                      <a 
+                        href={`https://ctx.cretec.kr/CtxApp/ctx/selectPowerSearchList.do?prod_cd=${item.code}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="p-2 text-blue-600 bg-blue-50 rounded-lg"
+                      >
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
                     <button onClick={() => setEditModal({ open: true, data: { ...item } })} className="p-2 text-slate-500 bg-slate-100 rounded-lg"><Pencil size={14} /></button>
                     <button onClick={() => setDeleteConfirm({ open: true, id: item.id!, name: item.name })} className="p-2 text-red-500 bg-red-50 rounded-lg"><Trash2 size={14} /></button>
                   </div>
