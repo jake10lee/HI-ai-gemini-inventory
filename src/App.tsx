@@ -110,10 +110,24 @@ export default function App() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      // Use custom parameters to force account selection if needed
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
-      setModal({ open: true, title: "Login Failed", content: error instanceof Error ? error.message : String(error) });
+      let message = "로그인에 실패했습니다.";
+      
+      if (error.code === 'auth/unauthorized-domain') {
+        message = "현재 도메인이 Firebase에 등록되지 않았습니다. Firebase 콘솔에서 'jake10lee.github.io'를 승인된 도메인에 추가해주세요.";
+      } else if (error.code === 'auth/popup-blocked') {
+        message = "팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요.";
+      } else if (error.code === 'auth/operation-not-allowed') {
+        message = "Firebase 콘솔에서 Google 로그인이 활성화되지 않았습니다.";
+      } else {
+        message += ` (${error.code}: ${error.message})`;
+      }
+      
+      setModal({ open: true, title: "Login Failed", content: message });
     } finally {
       setLoading(false);
     }
