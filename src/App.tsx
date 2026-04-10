@@ -512,7 +512,7 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-4 lg:p-8 w-full max-w-7xl mx-auto overflow-hidden">
+      <main className="flex-1 p-4 lg:p-8 w-full overflow-hidden">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h2 className="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight uppercase">HI AI Inventory</h2>
@@ -606,7 +606,7 @@ export default function App() {
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50/50 border-b border-slate-100">
                 <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <th className="px-6 py-4 text-center w-12">
+                  <th className="px-4 py-4 text-center w-12">
                     <input 
                       type="checkbox" 
                       className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -614,17 +614,17 @@ export default function App() {
                       onChange={toggleSelectAll}
                     />
                   </th>
-                  <th className="px-6 py-4 text-center w-24">구분</th>
-                  <th className="px-6 py-4">날짜</th>
-                  <th className="px-6 py-4">거래처</th>
-                  <th className="px-6 py-4">브랜드</th>
-                  <th className="px-6 py-4 min-w-[300px]">품명</th>
-                  <th className="px-6 py-4 min-w-[150px]">규격</th>
-                  <th className="px-6 py-4 text-right">단가</th>
-                  <th className="px-6 py-4 text-center">수량</th>
-                  <th className="px-6 py-4 text-right">금액</th>
-                  <th className="px-6 py-4 text-center">CTX</th>
-                  <th className="px-6 py-4 text-center">도구</th>
+                  <th className="px-4 py-4 text-center w-20">구분</th>
+                  <th className="px-4 py-4 w-24">날짜</th>
+                  <th className="px-4 py-4 w-32">거래처</th>
+                  <th className="px-4 py-4 w-24">브랜드</th>
+                  <th className="px-4 py-4 min-w-[200px]">품명</th>
+                  <th className="px-4 py-4 w-32">규격</th>
+                  <th className="px-4 py-4 text-right w-24">단가</th>
+                  <th className="px-4 py-4 text-center w-16">수량</th>
+                  <th className="px-4 py-4 text-right w-28">금액</th>
+                  <th className="px-4 py-4 text-center w-16">CTX</th>
+                  <th className="px-4 py-4 text-center w-24">도구</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-sm font-medium">
@@ -633,7 +633,7 @@ export default function App() {
                     "hover:bg-slate-50/50 group transition-colors",
                     selectedIds.includes(item.id!) && "bg-blue-50/30"
                   )}>
-                    <td className="px-6 py-4 text-center">
+                    <td className="px-4 py-4 text-center">
                       <input 
                         type="checkbox" 
                         className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -641,7 +641,7 @@ export default function App() {
                         onChange={() => toggleSelectItem(item.id!)}
                       />
                     </td>
-                    <td className="px-6 py-4 text-center whitespace-nowrap min-w-[80px]">
+                    <td className="px-4 py-4 text-center whitespace-nowrap">
                       <span className={cn(
                         "px-2 py-0.5 rounded text-[10px] font-black",
                         item.type === 'purchase' ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"
@@ -649,17 +649,17 @@ export default function App() {
                         {item.type === 'purchase' ? '매입' : '매출'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-mono text-slate-500 font-bold">{item.date || '-'}</td>
-                    <td className="px-6 py-4 text-slate-700 truncate max-w-[150px]">{item.company}</td>
-                    <td className="px-6 py-4 uppercase text-slate-400 font-bold tracking-tight">{item.brand || '-'}</td>
-                    <td className="px-6 py-4 font-semibold text-slate-900">{item.name}</td>
-                    <td className="px-6 py-4 text-blue-600/80 font-bold">{item.spec}</td>
-                    <td className="px-6 py-4 text-right">₩{(Number(item.price) || 0).toLocaleString()}</td>
-                    <td className="px-6 py-4 text-center font-bold text-slate-600">{item.quantity}</td>
-                    <td className="px-6 py-4 text-right font-black text-slate-900">
+                    <td className="px-4 py-4 font-mono text-slate-500 font-bold text-xs">{item.date || '-'}</td>
+                    <td className="px-4 py-4 text-slate-700 truncate max-w-[120px] text-xs" title={item.company}>{item.company}</td>
+                    <td className="px-4 py-4 uppercase text-slate-400 font-bold tracking-tight text-[10px] truncate max-w-[80px]" title={item.brand}>{item.brand || '-'}</td>
+                    <td className="px-4 py-4 font-semibold text-slate-900 text-xs truncate max-w-[250px]" title={item.name}>{item.name}</td>
+                    <td className="px-4 py-4 text-blue-600/80 font-bold text-xs truncate max-w-[120px]" title={item.spec}>{item.spec}</td>
+                    <td className="px-4 py-4 text-right text-xs">₩{(Number(item.price) || 0).toLocaleString()}</td>
+                    <td className="px-4 py-4 text-center font-bold text-slate-600 text-xs">{item.quantity}</td>
+                    <td className="px-4 py-4 text-right font-black text-slate-900 text-xs">
                       ₩{((Number(item.price) || 0) * (Number(item.quantity) || 0)).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    <td className="px-4 py-4 text-center">
                       {item.company?.includes('크레텍') ? (
                         <a 
                           href={`https://ctx.cretec.kr/CtxApp/ctx/selectPowerSearchList.do?prod_cd=${item.code}`} 
@@ -671,7 +671,7 @@ export default function App() {
                         </a>
                       ) : '-'}
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    <td className="px-4 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button 
                           onClick={() => generateProductGuide(item)} 
