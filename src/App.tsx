@@ -709,7 +709,7 @@ export default function App() {
                   <th className="px-4 py-4 w-32">거래처</th>
                   <th className="px-4 py-4 w-24">브랜드</th>
                   <th className="px-4 py-4 min-w-[200px]">품명</th>
-                  <th className="px-4 py-4 w-32">규격</th>
+                  <th className="px-4 py-4 min-w-[150px]">규격</th>
                   <th className="px-4 py-4 text-right w-24">단가</th>
                   <th className="px-4 py-4 text-center w-16">수량</th>
                   <th className="px-4 py-4 text-right w-28">금액</th>
@@ -743,7 +743,7 @@ export default function App() {
                     <td className="px-4 py-4 text-slate-700 truncate max-w-[120px] text-xs" title={item.company}>{item.company}</td>
                     <td className="px-4 py-4 uppercase text-slate-400 font-bold tracking-tight text-[10px] truncate max-w-[80px]" title={item.brand}>{item.brand || '-'}</td>
                     <td className="px-4 py-4 font-semibold text-slate-900 text-xs truncate max-w-[250px]" title={item.name}>{item.name}</td>
-                    <td className="px-4 py-4 text-blue-600/80 font-bold text-xs truncate max-w-[120px]" title={item.spec}>{item.spec}</td>
+                    <td className="px-4 py-4 text-blue-600/80 font-bold text-xs" title={item.spec}>{item.spec}</td>
                     <td className="px-4 py-4 text-right text-xs">₩{(Number(item.price) || 0).toLocaleString()}</td>
                     <td className="px-4 py-4 text-center font-bold text-slate-600 text-xs">{item.quantity}</td>
                     <td className="px-4 py-4 text-right font-black text-slate-900 text-xs">
