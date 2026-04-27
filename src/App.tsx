@@ -193,7 +193,7 @@ export default function App() {
     if (!isAuthReady || !user) return;
 
     const inventoryRef = collection(db, 'inventory');
-    const q = query(inventoryRef, orderBy('timestamp', 'desc'));
+    const q = query(inventoryRef, orderBy('date', 'desc'), orderBy('timestamp', 'desc'));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
