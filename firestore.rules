@@ -1,34 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: inventory
-    // Document ID: auto-generated
-    // Fields:
-    //   - type: string ('purchase' | 'sales') - required
-    //   - date: string (YYYY-MM-DD) - required
-    //   - company: string - required
-    //   - brand: string - optional
-    //   - name: string - required
-    //   - spec: string - optional
-    //   - code: string - optional
-    //   - quantity: number - required, positive
-    //   - unit: string - optional
-    //   - price: number - required, positive
-    //   - timestamp: timestamp - required on create
-    //
-    // ===============================================================
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
     
     function isAuthenticated() {
-      return request.auth != null && request.auth.token.email == "yahgong@gmail.com" && request.auth.token.email_verified == true;
+      // In a real app, you might want to check a list of authorized emails in a collection
+      // For now, we use the specific email provided in the context as admin.
+      return request.auth != null && 
+             request.auth.token.email == "yahgong@gmail.com" && 
+             request.auth.token.email_verified == true;
     }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- Validation Blueprints ---
 
     function isValidInventoryItem(data) {
       return data.keys().hasAll(['type', 'date', 'company', 'name', 'quantity', 'price', 'timestamp']) &&
@@ -45,10 +38,61 @@ service cloud.firestore {
              (!('unit' in data) || (data.unit is string && data.unit.size() <= 50));
     }
 
+    function isValidVendor(data) {
+      return data.keys().hasAll(['name', 'timestamp']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             (!('orgChart' in data) || data.orgChart is string) &&
+             (!('contacts' in data) || data.contacts is list) &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidTodo(data) {
+      return data.keys().hasAll(['task', 'priority', 'dueDate', 'completed', 'timestamp']) &&
+             data.task is string && data.task.size() > 0 &&
+             data.priority in ['high', 'medium', 'low'] &&
+             data.dueDate is string &&
+             data.completed is bool &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidVision(data) {
+      return data.keys().hasAll(['title', 'description', 'date', 'timestamp']) &&
+             data.title is string && data.title.size() > 0 &&
+             data.description is string &&
+             data.date is string &&
+             data.timestamp is timestamp;
+    }
+
+    // --- Collection Matches ---
+
     match /inventory/{itemId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidInventoryItem(request.resource.data) && request.resource.data.timestamp == request.time;
-      allow update: if isAuthenticated() && isValidInventoryItem(request.resource.data) && request.resource.data.timestamp == resource.data.timestamp;
+      allow create: if isAuthenticated() && isValidInventoryItem(incoming()) && incoming().timestamp == request.time;
+      allow update: if isAuthenticated() && (
+        (incoming().diff(existing()).affectedKeys().hasOnly(['type', 'date', 'company', 'brand', 'name', 'spec', 'code', 'quantity', 'price', 'unit', 'ctxLink']) &&
+         isValidInventoryItem(incoming()))
+      );
+      allow delete: if isAuthenticated();
+    }
+
+    match /vendors/{vendorId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidVendor(incoming()) && incoming().timestamp == request.time;
+      allow update: if isAuthenticated() && isValidVendor(incoming());
+      allow delete: if isAuthenticated();
+    }
+
+    match /todos/{todoId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidTodo(incoming()) && incoming().timestamp == request.time;
+      allow update: if isAuthenticated() && isValidTodo(incoming());
+      allow delete: if isAuthenticated();
+    }
+
+    match /visions/{visionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidVision(incoming()) && incoming().timestamp == request.time;
+      allow update: if isAuthenticated() && isValidVision(incoming());
       allow delete: if isAuthenticated();
     }
   }

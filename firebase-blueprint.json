@@ -53,12 +53,72 @@
         }
       },
       "required": ["type", "date", "company", "name", "quantity", "price"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "A partner or vendor company information.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "orgChart": { "type": "string" },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "position": { "type": "string" },
+              "phones": { "type": "array", "items": { "type": "string" } },
+              "emails": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "TodoItem": {
+      "title": "Todo Item",
+      "description": "An operational task.",
+      "type": "object",
+      "properties": {
+        "task": { "type": "string" },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+        "dueDate": { "type": "string", "format": "date" },
+        "completed": { "type": "boolean" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["task", "priority", "dueDate", "completed"]
+    },
+    "VisionGoal": {
+      "title": "Vision Goal",
+      "description": "A strategic roadmap goal.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "description": "YYYY-MM format" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["title", "description", "date"]
     }
   },
   "firestore": {
     "inventory": {
       "schema": "InventoryItem",
       "description": "Collection of inventory items."
+    },
+    "vendors": {
+      "schema": "Vendor",
+      "description": "Collection of business partners."
+    },
+    "todos": {
+      "schema": "TodoItem",
+      "description": "Collection of tasks."
+    },
+    "visions": {
+      "schema": "VisionGoal",
+      "description": "Collection of strategic goals."
     }
   }
 }
