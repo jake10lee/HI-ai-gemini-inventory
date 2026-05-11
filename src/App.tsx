@@ -689,13 +689,13 @@ export default function App() {
   };
 
   const stats = useMemo(() => {
-    const pItems = inventory.filter(i => {
-      const t = String(i.type).toLowerCase();
-      return t.includes('purchase') || t === '매입';
-    });
     const sItems = inventory.filter(i => {
-      const t = String(i.type).toLowerCase();
+      const t = String(i.type || '').toLowerCase();
       return t.includes('sales') || t === '매출';
+    });
+    const pItems = inventory.filter(i => {
+      const t = String(i.type || '').toLowerCase();
+      return !t.includes('sales') && t !== '매출';
     });
     
     const parseNum = (val: any) => {
@@ -843,7 +843,8 @@ export default function App() {
       i.brand?.toLowerCase().includes(s) || 
       i.date?.includes(s)
     );
-    const matchesType = filterType === 'all' || i.type === filterType;
+    const isSales = String(i.type || '').toLowerCase().includes('sales') || i.type === '매출';
+    const matchesType = filterType === 'all' || (filterType === 'sales' ? isSales : !isSales);
     return matchesSearch && matchesType;
   });
 
@@ -884,7 +885,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
       {/* Main Layout Container */}
-      <div className="flex flex-1 gap-4 lg:gap-6 p-4 lg:p-6 max-h-screen overflow-hidden relative">
+      <div className="flex flex-1 gap-2 lg:gap-4 p-2 lg:p-4 max-h-screen overflow-hidden relative">
         {/* Mobile Menu Backdrop */}
         {isMobileMenuOpen && (
           <div 
@@ -985,9 +986,9 @@ export default function App() {
         </aside>
 
         {/* Main Workspace Area */}
-        <div className="flex-1 flex flex-col gap-6 min-w-0">
+        <div className="flex-1 flex flex-col gap-3 lg:gap-4 min-w-0">
           {/* Top Bar Area */}
-          <header className="flex items-center gap-6 shrink-0">
+          <header className="flex items-center gap-4 shrink-0">
             <button 
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-4 bg-white rounded-2xl shadow-clay lg:hidden"
@@ -1039,7 +1040,7 @@ export default function App() {
               {/* Left Column: Financial Stats & Vendors */}
               <div className="col-span-12 lg:col-span-7 flex flex-col gap-4 lg:gap-6 overflow-hidden">
                 {/* Financial Summary Card */}
-                <section className="bg-white rounded-4xl lg:rounded-5xl p-6 lg:p-8 shadow-clay flex flex-col gap-6 shrink-0 border-t-8 border-blue-600">
+                <section className="bg-white rounded-3xl lg:rounded-4xl p-4 lg:p-6 shadow-clay flex flex-col gap-4 shrink-0 border-t-4 border-blue-600">
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2 text-blue-600">
@@ -1218,7 +1219,7 @@ export default function App() {
                 </section>
 
                 {/* TO-DO 리스트 */}
-                <section className="flex-1 bg-white rounded-4xl lg:rounded-5xl p-6 lg:p-8 shadow-clay flex flex-col gap-4 lg:gap-6 overflow-hidden border-t-8 border-slate-900 min-h-[450px]">
+                <section className="flex-1 bg-white rounded-3xl lg:rounded-4xl p-4 lg:p-6 shadow-clay flex flex-col gap-3 lg:gap-4 overflow-hidden border-t-4 border-slate-900 min-h-[350px]">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2 lg:gap-3 cursor-pointer" onClick={() => setActiveTab('todo')}>
                       <ClipboardList size={20} className="text-slate-900 lg:w-6 lg:h-6" />
@@ -1297,7 +1298,7 @@ export default function App() {
               {/* Right Column: VISION */}
               <div className="col-span-12 lg:col-span-5 flex flex-col gap-6 overflow-hidden">
                 {/* VISION & 목표 (Timeline Format) */}
-                <section className="flex-1 bg-white rounded-4xl lg:rounded-5xl p-6 lg:p-8 shadow-clay flex flex-col gap-4 lg:gap-6 overflow-hidden border-t-8 border-blue-600">
+                <section className="flex-1 bg-white rounded-3xl lg:rounded-4xl p-4 lg:p-6 shadow-clay flex flex-col gap-3 lg:gap-4 overflow-hidden border-t-4 border-blue-600">
                   <div className="flex justify-between items-center cursor-pointer" onClick={() => setActiveTab('vision')}>
                     <div className="flex items-center gap-2 lg:gap-3">
                       <Target size={20} className="text-blue-600 lg:w-6 lg:h-6" />
@@ -1323,7 +1324,7 @@ export default function App() {
                                   {vision.date || 'TBD'}
                                 </span>
                               </div>
-                              <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 group-hover:border-blue-200 transition-colors">
+                            <div className="bg-slate-50 p-2 lg:p-3 rounded-2xl border border-slate-100 group-hover:border-blue-200 transition-colors">
                                 <h4 className="text-xs font-black text-slate-900 mb-1 leading-tight">{vision.title}</h4>
                                 <p className="text-[10px] text-slate-500 font-bold leading-relaxed line-clamp-3">{vision.description}</p>
                               </div>
@@ -1362,9 +1363,9 @@ export default function App() {
           )}
 
           {activeTab === 'inventory' && (
-            <div className="flex-1 flex flex-col gap-6 overflow-hidden pb-4">
+            <div className="flex-1 flex flex-col gap-3 lg:gap-4 overflow-hidden pb-2">
               {/* Image-Style Top Header Row */}
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 shrink-0">
                 <div className="flex flex-col">
                   <h2 className="text-2xl font-black tracking-tighter text-slate-900 leading-none">HI 재고관리</h2>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">HARDWARE INTELLIGENCE MANAGEMENT</p>
@@ -1392,7 +1393,7 @@ export default function App() {
               </div>
 
               {/* Stats Cards Row (5 Cards) */}
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 shrink-0">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 shrink-0">
                 {[
                   { label: '매입액', value: `₩${stats.purchase.toLocaleString()}`, color: 'text-blue-600' },
                   { label: '매출액', value: `₩${stats.sales.toLocaleString()}`, color: 'text-orange-600' },
@@ -1400,9 +1401,9 @@ export default function App() {
                   { label: '매입처', value: `${stats.vendors}개`, color: 'text-blue-600' },
                   { label: '총 기록', value: `${stats.count}건`, color: 'text-slate-900' }
                 ].map((stat, i) => (
-                  <div key={i} className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{stat.label}</span>
-                    <span className={cn("text-lg font-black tracking-tighter", stat.color)}>{stat.value}</span>
+                  <div key={i} className="bg-white p-3 lg:p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-0.5">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{stat.label}</span>
+                    <span className={cn("text-base lg:text-lg font-black tracking-tighter", stat.color)}>{stat.value}</span>
                   </div>
                 ))}
               </div>
@@ -1456,26 +1457,26 @@ export default function App() {
                   <table className="w-full border-collapse min-w-[1200px]">
                     <thead className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-md">
                       <tr className="border-b border-slate-100">
-                        <th className="p-3 text-left w-12">
+                        <th className="px-2 py-2 text-left w-10">
                           <input 
                             type="checkbox" 
-                            className="w-4 h-4 rounded border-slate-200 text-slate-900 focus:ring-slate-900"
+                            className="w-3.5 h-3.5 rounded border-slate-200 text-slate-900 focus:ring-slate-900"
                             checked={selectedIds.length === filtered.length && filtered.length > 0}
                             onChange={toggleSelectAll}
                           />
                         </th>
-                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">구분</th>
-                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">날짜</th>
-                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">거래처</th>
-                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">제품코드</th>
-                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">브랜드</th>
-                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[200px]">품명</th>
-                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[150px]">규격</th>
-                        <th className="p-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">단가</th>
-                        <th className="p-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">수량</th>
-                        <th className="p-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">금액</th>
-                        <th className="p-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest w-12">CTX</th>
-                        <th className="p-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest w-20">도구</th>
+                        <th className="px-2 py-2 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest w-14">구분</th>
+                        <th className="px-2 py-2 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest w-20">날짜</th>
+                        <th className="px-2 py-2 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest w-36">거래처</th>
+                        <th className="px-2 py-2 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest w-28">제품코드</th>
+                        <th className="px-2 py-2 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest w-20">브랜드</th>
+                        <th className="px-2 py-2 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest min-w-[180px]">품명</th>
+                        <th className="px-2 py-2 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest min-w-[120px]">규격</th>
+                        <th className="px-2 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest w-20">단가</th>
+                        <th className="px-2 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest w-12">수량</th>
+                        <th className="px-2 py-2 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest w-20">금액</th>
+                        <th className="px-2 py-2 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest w-10">CTX</th>
+                        <th className="px-2 py-2 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest w-16">도구</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -1487,15 +1488,15 @@ export default function App() {
                             selectedIds.includes(item.id!) ? "bg-slate-50/50" : "bg-white"
                           )}
                         >
-                          <td className="p-3">
+                          <td className="px-2 py-1.5">
                             <input 
                               type="checkbox" 
-                              className="w-4 h-4 rounded border-slate-200 text-slate-900 focus:ring-slate-900"
+                              className="w-3.5 h-3.5 rounded border-slate-200 text-slate-900 focus:ring-slate-900"
                               checked={selectedIds.includes(item.id!)}
                               onChange={() => toggleSelectItem(item.id!)}
                             />
                           </td>
-                          <td className="p-3">
+                          <td className="px-2 py-1.5">
                             <span className={cn(
                               "text-[10px] font-black px-2 py-0.5 rounded-md",
                               item.type === 'purchase' ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"
@@ -1503,16 +1504,16 @@ export default function App() {
                               {item.type === 'purchase' ? '매입' : '매출'}
                             </span>
                           </td>
-                          <td className="p-3 text-[11px] font-bold text-slate-500 font-mono">{item.date}</td>
-                          <td className="p-3 text-[11px] font-black text-slate-700 truncate max-w-[160px]">{item.company}</td>
-                          <td className="p-3 text-[11px] font-bold text-slate-600 font-mono truncate max-w-[120px]">{item.code || '-'}</td>
-                          <td className="p-3 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{item.brand}</td>
-                          <td className="p-3 text-[11px] font-black text-slate-900">{item.name}</td>
-                          <td className="p-3 text-[11px] font-bold text-blue-500 font-mono">{item.spec}</td>
-                          <td className="p-3 text-right text-[11px] font-bold text-slate-500 font-mono">₩{(item.price || 0).toLocaleString()}</td>
-                          <td className="p-3 text-right text-[11px] font-black text-slate-900">{item.quantity}</td>
-                          <td className="p-3 text-right text-[11px] font-black text-slate-900 font-mono">₩{((item.price || 0) * (item.quantity || 0)).toLocaleString()}</td>
-                          <td className="p-3 text-center">
+                          <td className="px-2 py-1.5 text-[11px] font-bold text-slate-500 font-mono">{item.date}</td>
+                          <td className="px-2 py-1.5 text-[11px] font-black text-slate-700 truncate max-w-[160px]">{item.company}</td>
+                          <td className="px-2 py-1.5 text-[11px] font-bold text-slate-600 font-mono truncate max-w-[120px]">{item.code || '-'}</td>
+                          <td className="px-2 py-1.5 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{item.brand}</td>
+                          <td className="px-2 py-1.5 text-[11px] font-black text-slate-900">{item.name}</td>
+                          <td className="px-2 py-1.5 text-[11px] font-bold text-blue-500 font-mono">{item.spec}</td>
+                          <td className="px-2 py-1.5 text-right text-[11px] font-bold text-slate-500 font-mono">₩{(item.price || 0).toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right text-[11px] font-black text-slate-900">{item.quantity}</td>
+                          <td className="px-2 py-1.5 text-right text-[11px] font-black text-slate-900 font-mono">₩{((item.price || 0) * (item.quantity || 0)).toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-center">
                             <button 
                               onClick={() => handleViewCtx(item)}
                               className="text-blue-400 hover:text-blue-600 transition-colors"
@@ -1520,7 +1521,7 @@ export default function App() {
                               <ExternalLink size={14} />
                             </button>
                           </td>
-                          <td className="p-3 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             <div className="flex items-center justify-center gap-1 transition-opacity">
                               <button onClick={() => generateProductGuide(item)} title="AI 가이드" className="p-1 px-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-600 hover:text-white transition-all">
                                 <Lightbulb size={12} />
