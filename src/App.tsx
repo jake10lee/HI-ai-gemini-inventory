@@ -1363,7 +1363,7 @@ export default function App() {
           )}
 
           {activeTab === 'inventory' && (
-            <div className="flex-1 flex flex-col gap-3 lg:gap-4 overflow-hidden pb-2">
+            <div className="flex-1 flex flex-col gap-3 lg:gap-4 overflow-y-auto lg:overflow-hidden pb-2">
               {/* Image-Style Top Header Row */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 shrink-0">
                 <div className="flex flex-col">
@@ -1452,7 +1452,7 @@ export default function App() {
               </div>
 
               {/* Data Table Section */}
-              <div className="flex-1 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-0">
+              <div className="flex-1 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[600px] lg:min-h-0">
                 <div className="overflow-x-auto overflow-y-auto custom-scrollbar flex-1 relative">
                   <table className="w-full border-collapse min-w-[1200px]">
                     <thead className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-md">
@@ -1488,7 +1488,7 @@ export default function App() {
                             selectedIds.includes(item.id!) ? "bg-slate-50/50" : "bg-white"
                           )}
                         >
-                          <td className="px-2 py-1.5">
+                          <td className="px-2 py-3">
                             <input 
                               type="checkbox" 
                               className="w-3.5 h-3.5 rounded border-slate-200 text-slate-900 focus:ring-slate-900"
@@ -1496,7 +1496,7 @@ export default function App() {
                               onChange={() => toggleSelectItem(item.id!)}
                             />
                           </td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-2 py-3">
                             <span className={cn(
                               "text-[10px] font-black px-2 py-0.5 rounded-md",
                               item.type === 'purchase' ? "bg-blue-50 text-blue-600" : "bg-orange-50 text-orange-600"
@@ -1504,16 +1504,16 @@ export default function App() {
                               {item.type === 'purchase' ? '매입' : '매출'}
                             </span>
                           </td>
-                          <td className="px-2 py-1.5 text-[11px] font-bold text-slate-500 font-mono">{item.date}</td>
-                          <td className="px-2 py-1.5 text-[11px] font-black text-slate-700 truncate max-w-[160px]">{item.company}</td>
-                          <td className="px-2 py-1.5 text-[11px] font-bold text-slate-600 font-mono truncate max-w-[120px]">{item.code || '-'}</td>
-                          <td className="px-2 py-1.5 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{item.brand}</td>
-                          <td className="px-2 py-1.5 text-[11px] font-black text-slate-900">{item.name}</td>
-                          <td className="px-2 py-1.5 text-[11px] font-bold text-blue-500 font-mono">{item.spec}</td>
-                          <td className="px-2 py-1.5 text-right text-[11px] font-bold text-slate-500 font-mono">₩{(item.price || 0).toLocaleString()}</td>
-                          <td className="px-2 py-1.5 text-right text-[11px] font-black text-slate-900">{item.quantity}</td>
-                          <td className="px-2 py-1.5 text-right text-[11px] font-black text-slate-900 font-mono">₩{((item.price || 0) * (item.quantity || 0)).toLocaleString()}</td>
-                          <td className="px-2 py-1.5 text-center">
+                          <td className="px-2 py-3 text-[11px] font-bold text-slate-500 font-mono">{item.date}</td>
+                          <td className="px-2 py-3 text-[11px] font-black text-slate-700 truncate max-w-[160px]">{item.company}</td>
+                          <td className="px-2 py-3 text-[11px] font-bold text-slate-600 font-mono truncate max-w-[120px]">{item.code || '-'}</td>
+                          <td className="px-2 py-3 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{item.brand}</td>
+                          <td className="px-2 py-3 text-[11px] font-black text-slate-900">{item.name}</td>
+                          <td className="px-2 py-3 text-[11px] font-bold text-blue-500 font-mono">{item.spec}</td>
+                          <td className="px-2 py-3 text-right text-[11px] font-bold text-slate-500 font-mono">₩{(item.price || 0).toLocaleString()}</td>
+                          <td className="px-2 py-3 text-right text-[11px] font-black text-slate-900">{item.quantity}</td>
+                          <td className="px-2 py-3 text-right text-[11px] font-black text-slate-900 font-mono">₩{((item.price || 0) * (item.quantity || 0)).toLocaleString()}</td>
+                          <td className="px-2 py-3 text-center">
                             <button 
                               onClick={() => handleViewCtx(item)}
                               className="text-blue-400 hover:text-blue-600 transition-colors"
@@ -1521,7 +1521,7 @@ export default function App() {
                               <ExternalLink size={14} />
                             </button>
                           </td>
-                          <td className="px-2 py-1.5 text-center">
+                          <td className="px-2 py-3 text-center">
                             <div className="flex items-center justify-center gap-1 transition-opacity">
                               <button onClick={() => generateProductGuide(item)} title="AI 가이드" className="p-1 px-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-600 hover:text-white transition-all">
                                 <Lightbulb size={12} />
