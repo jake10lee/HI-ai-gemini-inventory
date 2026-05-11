@@ -26,7 +26,9 @@ import {
   CartesianGrid, 
   Tooltip as RechartsTooltip, 
   ResponsiveContainer, 
-  Cell
+  Cell,
+  PieChart,
+  Pie
 } from 'recharts';
 import { 
   format, 
@@ -67,6 +69,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Menu,
+  Copy,
   ArrowDownLeft,
   ArrowUpRight,
   Users,
@@ -161,7 +164,7 @@ export default function App() {
     open: boolean;
     duplicates: InventoryItem[];
     pending: InventoryItem[];
-    resolve: ((action: 'exclude' | 'all' | 'cancel') => void) | null;
+    resolve: ((action: 'exclude' | 'all' | 'overwrite' | 'cancel') => void) | null;
   }>({ open: false, duplicates: [], pending: [], resolve: null });
 
   const [showKeySetting, setShowKeySetting] = useState(false);
@@ -383,10 +386,20 @@ export default function App() {
             )
           );
 
-          let finalItems = itemsToSave;
+          let finalItems: { item: InventoryItem; existingId?: string }[] = itemsToSave.map(item => {
+            const existing = inventory.find(e => 
+              e.date === item.date &&
+              e.company === item.company &&
+              e.name === item.name &&
+              e.spec === item.spec &&
+              e.price === item.price &&
+              e.quantity === item.quantity
+            );
+            return { item, existingId: existing?.id };
+          });
 
           if (duplicates.length > 0) {
-            const action = await new Promise<'exclude' | 'all' | 'cancel'>((resolve) => {
+            const action = await new Promise<'exclude' | 'all' | 'overwrite' | 'cancel'>((resolve) => {
               setDuplicateModal({
                 open: true,
                 duplicates,
@@ -398,29 +411,36 @@ export default function App() {
             setDuplicateModal(prev => ({ ...prev, open: false }));
 
             if (action === 'cancel') continue;
+            
             if (action === 'exclude') {
-              finalItems = itemsToSave.filter(newItem => 
-                !inventory.some(existing => 
-                  existing.date === newItem.date &&
-                  existing.company === newItem.company &&
-                  existing.name === newItem.name &&
-                  existing.spec === newItem.spec &&
-                  existing.price === newItem.price &&
-                  existing.quantity === newItem.quantity
-                )
-              );
+              finalItems = finalItems.filter(f => !f.existingId);
+            } else if (action === 'overwrite') {
+              // We will use the existingId to update
+            } else if (action === 'all') {
+              // We reset existingId to force creation of new docs
+              finalItems = finalItems.map(f => ({ ...f, existingId: undefined }));
             }
           }
 
           const inventoryRef = collection(db, 'inventory');
-          for (const item of finalItems) {
+          for (const entry of finalItems) {
             try {
-              await addDoc(inventoryRef, {
-                ...item,
-                timestamp: serverTimestamp()
-              });
+              if (entry.existingId) {
+                // Overwrite: update existing document
+                const docRef = doc(db, 'inventory', entry.existingId);
+                await updateDoc(docRef, {
+                  ...entry.item,
+                  timestamp: serverTimestamp()
+                });
+              } else {
+                // Create new document
+                await addDoc(inventoryRef, {
+                  ...entry.item,
+                  timestamp: serverTimestamp()
+                });
+              }
             } catch (fsErr) {
-              handleFirestoreError(fsErr, OperationType.CREATE, 'inventory');
+              handleFirestoreError(fsErr, entry.existingId ? OperationType.UPDATE : OperationType.CREATE, 'inventory');
             }
           }
         }
@@ -462,6 +482,17 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCopyItem = (item: InventoryItem) => {
+    const { id, timestamp, ...rest } = item;
+    setManualAddModal({
+      open: true,
+      data: {
+        ...rest,
+        date: new Date().toISOString().split('T')[0] // Set current date for the copy
+      }
+    });
   };
 
   const handleBulkDelete = async () => {
@@ -658,8 +689,20 @@ export default function App() {
   };
 
   const stats = useMemo(() => {
-    const pItems = inventory.filter(i => i.type === 'purchase');
-    const sItems = inventory.filter(i => i.type === 'sales');
+    const pItems = inventory.filter(i => {
+      const t = String(i.type).toLowerCase();
+      return t.includes('purchase') || t === '매입';
+    });
+    const sItems = inventory.filter(i => {
+      const t = String(i.type).toLowerCase();
+      return t.includes('sales') || t === '매출';
+    });
+    
+    const parseNum = (val: any) => {
+      if (typeof val === 'number') return val;
+      if (typeof val === 'string') return Number(val.replace(/[^0-9.-]/g, '')) || 0;
+      return 0;
+    };
     
     let sortedVendors = [...vendors];
     if (vendorSort === 'name') {
@@ -691,7 +734,7 @@ export default function App() {
       intervalLabel = `${format(intervalStart, 'yyyy.MM.dd')} ~ ${format(intervalEnd, 'yyyy.MM.dd')}`;
     } else {
       // 'all' period
-      const dates = inventory.map(i => parseISO(i.date)).sort((a, b) => a.getTime() - b.getTime());
+      const dates = inventory.filter(i => i.date).map(i => parseISO(i.date)).sort((a, b) => a.getTime() - b.getTime());
       intervalStart = dates.length > 0 ? dates[0] : subDays(new Date(), 30);
       intervalEnd = new Date();
       intervalLabel = "전체 기간 현황";
@@ -699,12 +742,16 @@ export default function App() {
 
     // Filter Items by Interval
     const periodPurchaseItems = chartPeriod === 'all' ? pItems : pItems.filter(item => {
-      const d = parseISO(item.date);
-      return isWithinInterval(d, { start: intervalStart, end: intervalEnd });
+      try {
+        const d = parseISO(item.date);
+        return isWithinInterval(d, { start: intervalStart, end: intervalEnd });
+      } catch { return false; }
     });
     const periodSalesItems = chartPeriod === 'all' ? sItems : sItems.filter(item => {
-      const d = parseISO(item.date);
-      return isWithinInterval(d, { start: intervalStart, end: intervalEnd });
+      try {
+        const d = parseISO(item.date);
+        return isWithinInterval(d, { start: intervalStart, end: intervalEnd });
+      } catch { return false; }
     });
 
     // Chart Data Generation
@@ -716,8 +763,8 @@ export default function App() {
         return {
           name: format(date, 'E', { locale: ko }),
           fullDate: dStr,
-          purchase: pItems.filter(i => i.date === dStr).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
-          sales: sItems.filter(i => i.date === dStr).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
+          purchase: pItems.filter(i => i.date === dStr).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
+          sales: sItems.filter(i => i.date === dStr).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
         };
       });
     } else if (chartPeriod === 'monthly') {
@@ -726,8 +773,8 @@ export default function App() {
         return {
           name: format(date, 'd'),
           fullDate: dStr,
-          purchase: pItems.filter(i => i.date === dStr).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
-          sales: sItems.filter(i => i.date === dStr).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
+          purchase: pItems.filter(i => i.date === dStr).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
+          sales: sItems.filter(i => i.date === dStr).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
         };
       });
     } else if (chartPeriod === 'yearly') {
@@ -736,8 +783,8 @@ export default function App() {
         return {
           name: format(date, 'MMM', { locale: ko }),
           fullDate: mStr,
-          purchase: pItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
-          sales: sItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
+          purchase: pItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
+          sales: sItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
         };
       } );
     } else {
@@ -747,17 +794,34 @@ export default function App() {
         return {
           name: format(date, 'yy/MM'),
           fullDate: mStr,
-          purchase: pItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
-          sales: sItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
+          purchase: pItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
+          sales: sItems.filter(i => i.date?.startsWith(mStr)).reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
         };
       });
     }
 
+    // Vendor Distribution for Pie Chart
+    const vendorSalesMap: Record<string, number> = {};
+    const COLORS = ['#3b82f6', '#f97316', '#10b981', '#f59e0b', '#8b5cf6'];
+    
+    periodSalesItems.forEach(i => {
+      vendorSalesMap[i.company] = (vendorSalesMap[i.company] || 0) + (Math.abs(parseNum(i.price)) * Math.abs(parseNum(i.quantity)) || 0);
+    });
+
+    const vendorChartData = Object.entries(vendorSalesMap)
+      .map(([name, value], index) => ({ 
+        name, 
+        value,
+        color: COLORS[index % COLORS.length]
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
     return { 
-      purchase: periodPurchaseItems.reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0), 
-      sales: periodSalesItems.reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
-      totalPurchase: pItems.reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
-      totalSales: sItems.reduce((a, c) => a + (Number(c.price) * Number(c.quantity) || 0), 0),
+      purchase: periodPurchaseItems.reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0), 
+      sales: periodSalesItems.reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
+      totalPurchase: pItems.reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
+      totalSales: sItems.reduce((a, c) => a + (Math.abs(parseNum(c.price)) * Math.abs(parseNum(c.quantity)) || 0), 0),
       purchaseCount: pItems.length,
       salesCount: sItems.length,
       brands: [...new Set(inventory.map(i => i.brand))].length,
@@ -766,7 +830,8 @@ export default function App() {
       todoCompletion: todos.length > 0 ? Math.round((todos.filter(t => t.completed).length / todos.length) * 100) : 0,
       sortedVendors,
       chartData,
-      intervalLabel
+      intervalLabel,
+      vendorChartData
     };
   }, [inventory, todos, vendors, vendorSort, chartPeriod, activeDate]);
 
@@ -834,7 +899,10 @@ export default function App() {
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-[calc(100%+32px)]"
         )}>
           <button 
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => {
+              setActiveTab('dashboard');
+              setIsMobileMenuOpen(false);
+            }}
             className="bg-orange-500 p-3 rounded-2xl shadow-lg shadow-orange-500/20 mb-12 hover:scale-110 active:scale-95 transition-all cursor-pointer"
           >
             <PackageSearch size={24} className="text-white" />
@@ -842,7 +910,10 @@ export default function App() {
           
           <nav className="flex flex-col gap-6">
             <button 
-              onClick={() => setActiveTab('inventory')}
+              onClick={() => {
+                setActiveTab('inventory');
+                setIsMobileMenuOpen(false);
+              }}
               className={cn(
                 "p-4 rounded-2xl transition-all group relative",
                 activeTab === 'inventory' ? "bg-slate-900 text-white shadow-lg" : "bg-white text-slate-400 hover:text-slate-900 border border-slate-100"
@@ -854,7 +925,10 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => setActiveTab('vendors')}
+              onClick={() => {
+                setActiveTab('vendors');
+                setIsMobileMenuOpen(false);
+              }}
               className={cn(
                 "p-4 rounded-2xl transition-all group relative",
                 activeTab === 'vendors' ? "bg-slate-900 text-white shadow-lg" : "bg-white text-slate-400 hover:text-slate-900 border border-slate-100"
@@ -866,7 +940,10 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => setActiveTab('todo')}
+              onClick={() => {
+                setActiveTab('todo');
+                setIsMobileMenuOpen(false);
+              }}
               className={cn(
                 "p-4 rounded-2xl transition-all group relative",
                 activeTab === 'todo' ? "bg-slate-900 text-white shadow-lg" : "bg-white text-slate-400 hover:text-slate-900 border border-slate-100"
@@ -878,7 +955,10 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => setActiveTab('vision')}
+              onClick={() => {
+                setActiveTab('vision');
+                setIsMobileMenuOpen(false);
+              }}
               className={cn(
                 "p-4 rounded-2xl transition-all group relative",
                 activeTab === 'vision' ? "bg-slate-900 text-white shadow-lg" : "bg-white text-slate-400 hover:text-slate-900 border border-slate-100"
@@ -1043,39 +1123,85 @@ export default function App() {
                       )}
                     </div>
 
-                    <div className="h-[200px] lg:h-[240px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={stats.chartData} barGap={4}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis 
-                            dataKey="name" 
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                            dy={10}
-                          />
-                          <YAxis hide />
-                          <RechartsTooltip 
-                            cursor={{ fill: 'rgba(241, 245, 249, 0.5)' }}
-                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '10px', fontWeight: 'bold' }}
-                            formatter={(value: any) => `₩${Number(value).toLocaleString()}`}
-                          />
-                          <Bar 
-                            dataKey="purchase" 
-                            name="매입"
-                            fill="#3b82f6" 
-                            radius={[4, 4, 0, 0]} 
-                            barSize={chartPeriod === 'weekly' ? 30 : chartPeriod === 'monthly' ? 12 : 40}
-                          />
-                          <Bar 
-                            dataKey="sales" 
-                            name="매출"
-                            fill="#f97316" 
-                            radius={[4, 4, 0, 0]} 
-                            barSize={chartPeriod === 'weekly' ? 30 : chartPeriod === 'monthly' ? 12 : 40}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div className="flex-1 min-h-[250px] lg:min-h-[300px] flex gap-6">
+                      <div className="w-2/3">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={stats.chartData} barGap={4}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis 
+                              dataKey="name" 
+                              axisLine={false} 
+                              tickLine={false} 
+                              tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
+                              dy={10}
+                            />
+                            <YAxis hide />
+                            <RechartsTooltip 
+                              cursor={{ fill: 'rgba(241, 245, 249, 0.5)' }}
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '10px', fontWeight: 'bold' }}
+                              formatter={(value: any) => `₩${Number(value).toLocaleString()}`}
+                            />
+                            <Bar 
+                              dataKey="purchase" 
+                              name="매입"
+                              fill="#3b82f6" 
+                              radius={[4, 4, 0, 0]} 
+                              barSize={chartPeriod === 'weekly' ? 30 : chartPeriod === 'monthly' ? 8 : 40}
+                            />
+                            <Bar 
+                              dataKey="sales" 
+                              name="매출"
+                              fill="#f97316" 
+                              radius={[4, 4, 0, 0]} 
+                              barSize={chartPeriod === 'weekly' ? 30 : chartPeriod === 'monthly' ? 8 : 40}
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div className="w-1/3 border-l border-slate-50 pl-6 flex flex-col">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">거래처별 점유율</div>
+                        <div className="flex-1 min-h-0">
+                          {stats.vendorChartData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={stats.vendorChartData}
+                                  innerRadius="60%"
+                                  outerRadius="80%"
+                                  paddingAngle={5}
+                                  dataKey="value"
+                                >
+                                  {stats.vendorChartData.map((entry: any, index: number) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <RechartsTooltip 
+                                  contentStyle={{ borderRadius: '16px', border: 'none', shadow: 'none', fontSize: '10px', fontWeight: 'bold' }}
+                                  formatter={(value: any) => `₩${Number(value).toLocaleString()}`}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <div className="h-full flex items-center justify-center text-[10px] font-black text-slate-300 uppercase tracking-widest text-center">
+                              No data
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-4 space-y-2">
+                          {stats.vendorChartData.map((entry: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                                <span className="text-[9px] font-black text-slate-600 truncate">{entry.name}</span>
+                              </div>
+                              <span className="text-[9px] font-black text-slate-400 shrink-0">
+                                {Math.round((entry.value / stats.sales) * 100)}%
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-center gap-6 mt-4 shrink-0">
@@ -1091,88 +1217,126 @@ export default function App() {
                   </div>
                 </section>
 
-                {/* Vendors Ledger */}
-                <section className="flex-1 bg-white rounded-4xl lg:rounded-5xl p-6 lg:p-8 shadow-clay flex flex-col gap-4 lg:gap-6 overflow-hidden">
-                  <div className="flex justify-between items-center shrink-0 cursor-pointer" onClick={() => setActiveTab('vendors')}>
-                    <div className="flex items-center gap-2 lg:gap-3 text-orange-500">
-                      <Users size={20} className="lg:w-6 lg:h-6" />
-                      <h3 className="text-lg lg:text-xl font-black tracking-tight text-slate-900 leading-none">주요 거래처 현황</h3>
+                {/* TO-DO 리스트 */}
+                <section className="flex-1 bg-white rounded-4xl lg:rounded-5xl p-6 lg:p-8 shadow-clay flex flex-col gap-4 lg:gap-6 overflow-hidden border-t-8 border-slate-900 min-h-[450px]">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2 lg:gap-3 cursor-pointer" onClick={() => setActiveTab('todo')}>
+                      <ClipboardList size={20} className="text-slate-900 lg:w-6 lg:h-6" />
+                      <h3 className="text-lg lg:text-xl font-black tracking-tight">TO-DO 리스트</h3>
                     </div>
-                    <button className="text-[10px] font-black text-slate-400 uppercase hover:text-orange-500 transition-colors">전체보기</button>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => setTodoModal({ open: true, data: { task: '', priority: 'medium', dueDate: new Date().toISOString().split('T')[0] } })}
+                        className="p-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors"
+                        title="신규 할일 추가"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab('todo')}
+                        className="text-[10px] font-black text-slate-400 uppercase hover:text-slate-900 transition-colors"
+                      >전체보기</button>
+                    </div>
                   </div>
+
                   <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3 lg:space-y-4">
-                    {vendors.map(vendor => (
-                      <div key={vendor.id} className="p-4 lg:p-5 bg-white border-2 border-slate-50 rounded-3xl lg:rounded-4xl hover:border-orange-200 transition-all flex items-center gap-3 lg:gap-4">
-                        <div className="w-10 h-10 lg:w-12 lg:h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 shrink-0">
-                          <Building2 size={18} className="lg:w-[22px] lg:h-[22px]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-xs lg:text-sm font-black text-slate-900 uppercase tracking-tight truncate">{vendor.name}</h4>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[9px] lg:text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md truncate">{vendor.orgChart}</span>
+                    {todos.length > 0 ? (
+                      todos.map(todo => (
+                        <div key={todo.id} className={cn(
+                          "p-4 lg:p-5 rounded-3xl lg:rounded-4xl border-2 transition-all group relative",
+                          todo.completed ? "bg-slate-50 border-transparent opacity-60" : "bg-white border-slate-50 hover:border-slate-200"
+                        )}>
+                          <div className="flex items-start gap-3 lg:gap-4">
+                            <button 
+                              onClick={() => handleTodoAction('toggle', todo)}
+                              className={cn(
+                              "w-5 h-5 lg:w-6 lg:h-6 rounded-lg border-2 flex items-center justify-center transition-all mt-0.5 lg:mt-1",
+                              todo.completed ? "bg-slate-900 border-slate-900 text-white" : "border-slate-200 text-transparent hover:border-slate-900"
+                            )}>
+                              <Check size={12} className="lg:w-[14px] lg:h-[14px]" />
+                            </button>
+                            <div className="flex-1 min-w-0 pr-8">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={cn(
+                                  "text-[8px] lg:text-[9px] font-black px-2 py-0.5 rounded-full uppercase",
+                                  todo.priority === 'high' ? "bg-red-50 text-red-600" : 
+                                  todo.priority === 'medium' ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"
+                                )}>
+                                  {todo.priority}
+                                </span>
+                                <span className="text-[9px] lg:text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                  <Calendar size={10} /> {todo.dueDate}
+                                </span>
+                              </div>
+                              <h4 className={cn(
+                                "text-xs lg:text-sm font-black tracking-tight leading-tight",
+                                todo.completed ? "text-slate-400 line-through" : "text-slate-900"
+                              )}>
+                                {todo.task}
+                              </h4>
+                            </div>
+                            <button 
+                              onClick={() => setTodoModal({ open: true, data: todo })}
+                              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-slate-900 transition-all"
+                            >
+                              <Pencil size={14} />
+                            </button>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <span className="text-[9px] font-bold text-slate-500 block">담당자</span>
-                          <span className="text-[10px] lg:text-xs font-black text-slate-900">
-                            {vendor.contacts?.[0]?.name || 'N/A'}
-                          </span>
-                        </div>
+                      ))
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-300 py-10">
+                        <ClipboardList size={40} className="mb-2 opacity-20" />
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No pending tasks</p>
                       </div>
-                    ))}
+                    )}
                   </div>
                 </section>
               </div>
 
-              {/* Right Column: To-Do */}
+              {/* Right Column: VISION */}
               <div className="col-span-12 lg:col-span-5 flex flex-col gap-6 overflow-hidden">
-                <section className="flex-1 bg-white rounded-4xl lg:rounded-5xl p-6 lg:p-8 shadow-clay flex flex-col gap-4 lg:gap-6 overflow-hidden border-t-8 border-slate-900">
-                  <div className="flex justify-between items-center cursor-pointer" onClick={() => setActiveTab('todo')}>
+                {/* VISION & 목표 (Timeline Format) */}
+                <section className="flex-1 bg-white rounded-4xl lg:rounded-5xl p-6 lg:p-8 shadow-clay flex flex-col gap-4 lg:gap-6 overflow-hidden border-t-8 border-blue-600">
+                  <div className="flex justify-between items-center cursor-pointer" onClick={() => setActiveTab('vision')}>
                     <div className="flex items-center gap-2 lg:gap-3">
-                      <ClipboardList size={20} className="text-slate-900 lg:w-6 lg:h-6" />
-                      <h3 className="text-lg lg:text-xl font-black tracking-tight">TO-DO 리스트</h3>
+                      <Target size={20} className="text-blue-600 lg:w-6 lg:h-6" />
+                      <h3 className="text-lg lg:text-xl font-black tracking-tight">VISION & 목표</h3>
                     </div>
-                    <button className="text-[10px] font-black text-slate-400 uppercase hover:text-slate-900 transition-colors">전체보기</button>
+                    <button className="text-[10px] font-black text-slate-400 uppercase hover:text-blue-600 transition-colors">전체보기</button>
                   </div>
+                  
+                  <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar relative">
+                    {/* Vertical Timeline Line */}
+                    <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-slate-100 hidden sm:block" />
 
-                  <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3 lg:space-y-4">
-                    {todos.map(todo => (
-                      <div key={todo.id} className={cn(
-                        "p-4 lg:p-5 rounded-3xl lg:rounded-4xl border-2 transition-all group",
-                        todo.completed ? "bg-slate-50 border-transparent opacity-60" : "bg-white border-slate-50 hover:border-slate-200"
-                      )}>
-                        <div className="flex items-start gap-3 lg:gap-4">
-                          <button 
-                            onClick={() => handleTodoAction('toggle', todo)}
-                            className={cn(
-                            "w-5 h-5 lg:w-6 lg:h-6 rounded-lg border-2 flex items-center justify-center transition-all mt-0.5 lg:mt-1",
-                            todo.completed ? "bg-slate-900 border-slate-900 text-white" : "border-slate-200 text-transparent hover:border-slate-900"
-                          )}>
-                            <Check size={12} className="lg:w-[14px] lg:h-[14px]" />
-                          </button>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={cn(
-                                "text-[8px] lg:text-[9px] font-black px-2 py-0.5 rounded-full uppercase",
-                                todo.priority === 'high' ? "bg-red-50 text-red-600" : 
-                                todo.priority === 'medium' ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"
-                              )}>
-                                {todo.priority}
-                              </span>
-                              <span className="text-[9px] lg:text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                                <Calendar size={10} /> {todo.dueDate}
-                              </span>
+                    <div className="space-y-8 relative py-4">
+                      {visions.length > 0 ? (
+                        visions.map((vision, idx) => (
+                          <div key={vision.id || idx} className="relative pl-0 sm:pl-10 group">
+                            {/* Dot on timeline */}
+                            <div className="absolute left-2.5 top-1.5 w-1.5 h-1.5 rounded-full bg-blue-600 shadow-[0_0_0_4px_rgba(37,99,235,0.1)] hidden sm:block z-10 group-hover:scale-150 transition-transform" />
+                            
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">
+                                  {vision.date || 'TBD'}
+                                </span>
+                              </div>
+                              <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 group-hover:border-blue-200 transition-colors">
+                                <h4 className="text-xs font-black text-slate-900 mb-1 leading-tight">{vision.title}</h4>
+                                <p className="text-[10px] text-slate-500 font-bold leading-relaxed line-clamp-3">{vision.description}</p>
+                              </div>
                             </div>
-                            <h4 className={cn(
-                              "text-xs lg:text-sm font-black tracking-tight leading-tight",
-                              todo.completed ? "text-slate-400 line-through" : "text-slate-900"
-                            )}>
-                              {todo.task}
-                            </h4>
                           </div>
+                        ))
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-300 py-20">
+                          <Target size={40} className="mb-2 opacity-20" />
+                          <p className="text-[10px] font-black uppercase tracking-widest opacity-40">No goals set</p>
                         </div>
-                      </div>
-                    ))}
+                      )}
+                    </div>
                   </div>
                 </section>
 
@@ -1303,6 +1467,7 @@ export default function App() {
                         <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">구분</th>
                         <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">날짜</th>
                         <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">거래처</th>
+                        <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">제품코드</th>
                         <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">브랜드</th>
                         <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[200px]">품명</th>
                         <th className="p-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[150px]">규격</th>
@@ -1340,6 +1505,7 @@ export default function App() {
                           </td>
                           <td className="p-3 text-[11px] font-bold text-slate-500 font-mono">{item.date}</td>
                           <td className="p-3 text-[11px] font-black text-slate-700 truncate max-w-[160px]">{item.company}</td>
+                          <td className="p-3 text-[11px] font-bold text-slate-600 font-mono truncate max-w-[120px]">{item.code || '-'}</td>
                           <td className="p-3 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{item.brand}</td>
                           <td className="p-3 text-[11px] font-black text-slate-900">{item.name}</td>
                           <td className="p-3 text-[11px] font-bold text-blue-500 font-mono">{item.spec}</td>
@@ -1355,14 +1521,17 @@ export default function App() {
                             </button>
                           </td>
                           <td className="p-3 text-center">
-                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => generateProductGuide(item)} className="p-1 px-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-600 hover:text-white transition-all">
+                            <div className="flex items-center justify-center gap-1 transition-opacity">
+                              <button onClick={() => generateProductGuide(item)} title="AI 가이드" className="p-1 px-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-600 hover:text-white transition-all">
                                 <Lightbulb size={12} />
                               </button>
-                              <button onClick={() => setEditModal({ open: true, data: { ...item } })} className="p-1 px-1.5 bg-slate-100 text-slate-500 rounded-md hover:bg-slate-900 hover:text-white transition-all">
+                               <button onClick={() => handleCopyItem(item)} title="복사" className="p-1 px-1.5 bg-indigo-50 text-indigo-600 rounded-md hover:bg-indigo-600 hover:text-white transition-all">
+                                <Copy size={12} />
+                              </button>
+                              <button onClick={() => setEditModal({ open: true, data: { ...item } })} title="수정" className="p-1 px-1.5 bg-slate-100 text-slate-500 rounded-md hover:bg-slate-900 hover:text-white transition-all">
                                 <Pencil size={12} />
                               </button>
-                              <button onClick={() => setDeleteConfirm({ open: true, id: item.id!, name: item.name })} className="p-1 px-1.5 bg-red-50 text-red-400 rounded-md hover:bg-red-500 hover:text-white transition-all">
+                              <button onClick={() => setDeleteConfirm({ open: true, id: item.id!, name: item.name })} title="삭제" className="p-1 px-1.5 bg-red-50 text-red-400 rounded-md hover:bg-red-500 hover:text-white transition-all">
                                 <Trash2 size={12} />
                               </button>
                             </div>
@@ -1602,7 +1771,7 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {visions.map((vision, idx) => (
                     <div key={vision.id} className="bg-white p-8 lg:p-10 rounded-5xl shadow-clay border-t-8 border-blue-600 flex flex-col gap-6 group relative">
-                      <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                      <div className="absolute top-6 right-6 transition-opacity flex gap-2">
                         <button onClick={() => setVisionModal({ open: true, data: vision })} className="p-2 text-slate-400 hover:text-slate-900"><Pencil size={18} /></button>
                         <button onClick={() => handleVisionAction('delete', vision)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18} /></button>
                       </div>
@@ -1678,13 +1847,19 @@ export default function App() {
                   onClick={() => duplicateModal.resolve?.('exclude')}
                   className="w-full bg-slate-900 text-white py-3 lg:py-4 rounded-xl lg:rounded-2xl font-black text-xs lg:text-sm shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <Check size={16} /> 중복 제외하고 저장
+                  <X size={16} /> 기존 항목 유지 (건너뛰기)
                 </button>
                 <button 
-                  onClick={() => duplicateModal.resolve?.('all')}
-                  className="w-full bg-white border-2 border-slate-200 text-slate-700 py-3 lg:py-4 rounded-xl lg:rounded-2xl font-black text-xs lg:text-sm transition-transform active:scale-95"
+                  onClick={() => duplicateModal.resolve?.('overwrite')}
+                  className="w-full bg-blue-600 text-white py-3 lg:py-4 rounded-xl lg:rounded-2xl font-black text-xs lg:text-sm shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
                 >
-                  모두 저장 (중복 허용)
+                   <Check size={16} /> 덮어쓰기 (정보 업데이트)
+                </button>
+                <button 
+                   onClick={() => duplicateModal.resolve?.('all')}
+                   className="w-full bg-white border-2 border-slate-200 text-slate-700 py-3 lg:py-4 rounded-xl lg:rounded-2xl font-black text-xs lg:text-sm transition-transform active:scale-95"
+                >
+                   모두 저장 (중복 허용)
                 </button>
                 <button 
                   onClick={() => duplicateModal.resolve?.('cancel')}
@@ -1751,7 +1926,7 @@ export default function App() {
                 <X size={18} className="lg:w-5 lg:h-5" />
               </button>
             </div>
-            <div className="p-4 lg:p-6 max-h-[70vh] overflow-y-auto space-y-3 lg:space-y-4">
+            <div className="p-4 lg:p-6 max-h-[85vh] overflow-y-auto space-y-3 lg:space-y-4 shadow-inner">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 mb-1">날짜</label>
@@ -1774,63 +1949,69 @@ export default function App() {
                   </select>
                 </div>
               </div>
-              <div>
+              <div className="relative group">
                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">거래처</label>
                 <input 
                   type="text" 
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all focus:bg-white" 
                   placeholder="거래처명을 입력하세요"
                   value={manualAddModal.data.company} 
                   onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, company: e.target.value } })} 
+                  list="company-list"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <label className="block text-[10px] font-black text-slate-400 mb-1">브랜드</label>
                   <input 
                     type="text" 
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all focus:bg-white" 
                     value={manualAddModal.data.brand} 
                     onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, brand: e.target.value } })} 
+                    list="brand-list"
                   />
                 </div>
-                <div>
+                <div className="relative">
                   <label className="block text-[10px] font-black text-slate-400 mb-1">제품코드</label>
                   <input 
                     type="text" 
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all focus:bg-white" 
                     value={manualAddModal.data.code} 
                     onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, code: e.target.value } })} 
+                    list="code-list"
                   />
                 </div>
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-[10px] font-black text-slate-400 mb-1">품명</label>
                 <input 
                   type="text" 
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all focus:bg-white" 
                   placeholder="품명을 입력하세요"
                   value={manualAddModal.data.name} 
                   onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, name: e.target.value } })} 
+                  list="name-list"
                 />
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-[10px] font-black text-slate-400 mb-1">규격</label>
                 <input 
                   type="text" 
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all focus:bg-white" 
                   value={manualAddModal.data.spec} 
                   onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, spec: e.target.value } })} 
+                  list="spec-list"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="relative">
                   <label className="block text-[10px] font-black text-slate-400 mb-1">단가</label>
                   <input 
                     type="number" 
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all focus:bg-white" 
                     value={manualAddModal.data.price} 
                     onChange={(e) => setManualAddModal({ ...manualAddModal, data: { ...manualAddModal.data, price: Number(e.target.value) } })} 
+                    list="price-list"
                   />
                 </div>
                 <div>
@@ -1882,7 +2063,7 @@ export default function App() {
                 <X size={18} className="lg:w-5 lg:h-5" />
               </button>
             </div>
-            <div className="p-4 lg:p-6 max-h-[70vh] overflow-y-auto space-y-3 lg:space-y-4">
+            <div className="p-4 lg:p-6 max-h-[85vh] overflow-y-auto space-y-3 lg:space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 mb-1">날짜</label>
@@ -1912,6 +2093,7 @@ export default function App() {
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
                   value={editModal.data.company} 
                   onChange={(e) => setEditModal({...editModal, data: {...editModal.data!, company: e.target.value}})} 
+                  list="company-list"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1922,6 +2104,7 @@ export default function App() {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
                     value={editModal.data.brand} 
                     onChange={(e) => setEditModal({...editModal, data: {...editModal.data!, brand: e.target.value}})} 
+                    list="brand-list"
                   />
                 </div>
                 <div>
@@ -1931,6 +2114,7 @@ export default function App() {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
                     value={editModal.data.code} 
                     onChange={(e) => setEditModal({...editModal, data: {...editModal.data!, code: e.target.value}})} 
+                    list="code-list"
                   />
                 </div>
               </div>
@@ -1941,6 +2125,7 @@ export default function App() {
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
                   value={editModal.data.name} 
                   onChange={(e) => setEditModal({...editModal, data: {...editModal.data!, name: e.target.value}})} 
+                  list="name-list"
                 />
               </div>
               <div>
@@ -1950,6 +2135,7 @@ export default function App() {
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/20" 
                   value={editModal.data.spec} 
                   onChange={(e) => setEditModal({...editModal, data: {...editModal.data!, spec: e.target.value}})} 
+                  list="spec-list"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -2037,6 +2223,26 @@ export default function App() {
         </div>
       )}
 
+      {/* Autocomplete Datalists */}
+      <datalist id="company-list">
+        {[...new Set(inventory.map(i => i.company))].filter(Boolean).map(c => <option key={c} value={c} />)}
+      </datalist>
+      <datalist id="brand-list">
+        {[...new Set(inventory.map(i => i.brand))].filter(Boolean).map(b => <option key={b} value={b} />)}
+      </datalist>
+      <datalist id="code-list">
+        {[...new Set(inventory.map(i => i.code))].filter(Boolean).map(c => <option key={c} value={c} />)}
+      </datalist>
+      <datalist id="name-list">
+        {[...new Set(inventory.map(i => i.name))].filter(Boolean).map(n => <option key={n} value={n} />)}
+      </datalist>
+      <datalist id="spec-list">
+        {[...new Set(inventory.map(i => i.spec))].filter(Boolean).map(s => <option key={s} value={s} />)}
+      </datalist>
+      <datalist id="price-list">
+        {[...new Set(inventory.map(i => i.price))].filter(Boolean).map(p => <option key={p} value={p} />)}
+      </datalist>
+
       {/* Info Modal */}
       {modal.open && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1100] flex items-center justify-center p-4">
@@ -2047,7 +2253,7 @@ export default function App() {
                 <X size={18} className="lg:w-5 lg:h-5" />
               </button>
             </div>
-            <div className="p-6 lg:p-8 max-h-[60vh] lg:max-h-[70vh] overflow-y-auto text-[11px] lg:text-sm leading-relaxed text-slate-600 font-medium whitespace-pre-wrap">
+            <div className="p-6 lg:p-8 max-h-[85vh] overflow-y-auto text-[11px] lg:text-sm leading-relaxed text-slate-600 font-medium whitespace-pre-wrap shadow-inner">
               {modal.content}
             </div>
             <div className="p-4 lg:p-6 bg-slate-50/50 flex gap-2 lg:gap-3">
@@ -2157,7 +2363,7 @@ export default function App() {
                           const contacts = (vendorModal.data!.contacts || []).filter((_, i) => i !== cIdx);
                           setVendorModal({ ...vendorModal, data: { ...vendorModal.data!, contacts } });
                         }}
-                        className="absolute top-4 right-4 text-slate-300 hover:text-red-500 opacity-0 group-hover/contact:opacity-100 transition-opacity"
+                        className="absolute top-4 right-4 text-slate-300 hover:text-red-500 transition-opacity"
                       >
                         <Trash2 size={16} />
                       </button>
