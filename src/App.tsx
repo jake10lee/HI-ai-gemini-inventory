@@ -1395,8 +1395,8 @@ export default function App() {
               {/* Stats Cards Row (5 Cards) */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 shrink-0">
                 {[
-                  { label: '매입액', value: `₩${stats.purchase.toLocaleString()}`, color: 'text-blue-600' },
-                  { label: '매출액', value: `₩${stats.sales.toLocaleString()}`, color: 'text-orange-600' },
+                  { label: '매입액', value: `₩${stats.totalPurchase.toLocaleString()}`, color: 'text-blue-600' },
+                  { label: '매출액', value: `₩${stats.totalSales.toLocaleString()}`, color: 'text-orange-600' },
                   { label: '브랜드', value: `${stats.brands}개`, color: 'text-slate-900' },
                   { label: '매입처', value: `${stats.vendors}개`, color: 'text-blue-600' },
                   { label: '총 기록', value: `${stats.count}건`, color: 'text-slate-900' }
